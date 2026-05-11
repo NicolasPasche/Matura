@@ -15,7 +15,7 @@ class BlackScholesModel : public Model {
     BlackScholesModel(double S0_, double r_, double d_, double sigma_) 
         : S0(S0_), r(r_), d(d_), sigma(sigma_) {}
 
-    double simulate_terminal_price(double S0, double T, RandomGenerator& rng) const override {
+    double simulate_terminal_price(RandomGenerator& rng, double T) const override {
         double Z = rng.get_normal();
 
         return S0 * std::exp((r - d - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
