@@ -6,6 +6,12 @@ class Model {
     public:
         virtual ~Model() = default;
 
+        // Virtual getter functions for model parameters
+        virtual double getS() const = 0;
+        virtual double getR() const = 0;
+        virtual double getD() const = 0;
+        virtual double getSigma() const = 0;
+
         // Virtual function to simulate the underlying asset price
         virtual double simulate_terminal_price(RandomGenerator& rng, double T) const = 0;
 };

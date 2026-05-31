@@ -15,8 +15,16 @@ class ForwardContract : public Derivative {
         double payoff(double ST) const override  {
             return ST - K;
         }
+        
+        double getStrike() const override {
+            return K;
+        }
 
         std::string getName() const override {
             return "Forward Contract";
+        }
+
+        std::string type() const override {
+            return "Forward";
         }
 };

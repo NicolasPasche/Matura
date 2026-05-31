@@ -16,7 +16,15 @@ class CallOption : public Derivative {
             return std::max(ST - K, 0.0);
         }
 
+        double getStrike() const override {
+            return K;
+        }
+
         std::string getName() const override {
             return "Call Option";
+        }
+
+        std::string type() const override {
+            return "Call";
         }
 };

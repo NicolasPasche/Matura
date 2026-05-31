@@ -16,7 +16,15 @@ class DigitalPutOption : public Derivative {
             return ST < K ? 1.0 : 0.0;
         }
 
+        double getStrike() const override {
+            return K;
+        }
+
         std::string getName() const override {
             return "Digital Put Option";
+        }
+
+        std::string type() const override {
+            return "DigitalPut";
         }
 };

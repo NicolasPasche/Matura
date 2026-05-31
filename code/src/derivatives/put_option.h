@@ -16,7 +16,15 @@ class PutOption : public Derivative {
             return std::max(K - ST, 0.0);
         }
 
+        double getStrike() const override {
+            return K;
+        }
+
         std::string getName() const override {
             return "Put Option";
+        }
+
+        std::string type() const override {
+            return "Put";
         }
 };

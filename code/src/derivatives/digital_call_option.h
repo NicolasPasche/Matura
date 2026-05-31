@@ -16,7 +16,15 @@ class DigitalCallOption : public Derivative {
             return ST > K ? 1.0 : 0.0;
         }
 
+        double getStrike() const override {
+            return K;
+        }
+
         std::string getName() const override {
             return "Digital Call Option";
+        }
+
+        std::string type() const override {
+            return "DigitalCall";
         }
 };

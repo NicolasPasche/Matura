@@ -14,4 +14,8 @@ class ZeroCouponBond : public Derivative {
         std::string getName() const override {
             return "Zero Coupon Bond";
         }
+
+        std::string type() const override {
+            return "ZeroCouponBond";
+        }
 };
