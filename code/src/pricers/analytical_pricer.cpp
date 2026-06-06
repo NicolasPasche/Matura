@@ -20,7 +20,7 @@ double AnalyticalPricer::price(
 
     std::string type = typeid(derivative).name();
 
-    std::cout << "[DEBUG] type = " << type << std::endl;
+    // std::cout << "[DEBUG] type = " << type << std::endl;
 
     // -------------------------
     // FORWARD
@@ -54,10 +54,10 @@ double AnalyticalPricer::price(
     if (type == "10CallOption") {
 
         // Printing model parameters for debugging
-        std::cout << "d1 = " << d1 << '\n';
-        std::cout << "d2 = " << d2 << '\n';
-        std::cout << "N(d1) = " << norm_cdf(d1) << '\n';
-        std::cout << "N(d2) = " << norm_cdf(d2) << '\n';
+        // std::cout << "d1 = " << d1 << '\n';
+        // std::cout << "d2 = " << d2 << '\n';
+        // std::cout << "N(d1) = " << norm_cdf(d1) << '\n';
+        // std::cout << "N(d2) = " << norm_cdf(d2) << '\n';
 
         return S0 * std::exp(-d * T) * norm_cdf(d1)
              - K * std::exp(-r * T) * norm_cdf(d2);
