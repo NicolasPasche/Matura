@@ -16,4 +16,7 @@ class RandomGenerator {
 
         std::vector<double> get_normal_vector();
         double get_normal();
+
+        std::vector<int> get_poisson_vector(double lambda, double T);
+        int get_poisson(double lambda, double T);
 };
