@@ -1,3 +1,14 @@
+/* 
+Ugliest code EVER written...
+
+I really couldn't find an elegant way to build an analytical pricer, because I want my derivatives to be in 
+seperte classes, and I don't want to build a seperate pricer for each derivative.
+
+So I had to go down the if statement path...
+
+I had major problems building this pricer, which is visible in the out-dated comments. Just don't 
+get confused when you don't get them. I'll maybe clean up later, but not now.
+*/
 #include "../pricers/analytical_pricer.h"
 #include <cmath>
 #include <stdexcept>

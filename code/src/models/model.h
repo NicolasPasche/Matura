@@ -12,6 +12,8 @@ class Model {
         virtual double getD() const = 0;
         virtual double getSigma() const = 0;
         virtual double getLambda() const {return 0.0;} // Just for merton model so far
+        virtual double getMuJ() const {return 0.0;} // Just for merton model so far
+        virtual double getSigmaJ() const {return 0.0;} // Just for merton model so far
 
         // Virtual function to simulate the underlying asset price
         virtual double simulate_terminal_price(RandomGenerator& rng, double T) const = 0;
