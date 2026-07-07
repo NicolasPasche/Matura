@@ -1,6 +1,22 @@
+# C++ build files
 code/build/
+
 *.o
 *.exe
 *.out
-data/*.csv
+
+# Python cache
 __pycache__/
+*.py[cod]
+
+# PyTorch generated files
+torch
+
+# Trained models (only root models folder)
+ /models/*.pth
+
+# Processed ML data
+data/processed/
+
+# Dataset
+data/*.csvcode/build/
