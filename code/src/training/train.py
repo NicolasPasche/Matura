@@ -11,9 +11,7 @@ from pathlib import Path
 # Project paths
 project_root = Path(__file__).parent.parent.parent.parent
 
-sys.path.append(
-    str(project_root / "code" / "src")
-)
+sys.path.append(str(project_root / "code" / "src"))
 
 from models.network import PricingNetwork
 
