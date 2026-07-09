@@ -31,12 +31,12 @@ print(f"Using device: {device}")
 # Load data and trained model
 
 data_path = project_root / "data" / "processed"
-model_path = project_root / "models" / "best_model.pth"
+model_path = project_root / "models" / "best_model_dividend.pth"
 
 
-X_test = np.load(data_path / "X_test.npy")
+X_test = np.load(data_path / "X_test2.npy")
 
-y_test = np.load(data_path / "y_test.npy")
+y_test = np.load(data_path / "y_test2.npy")
 
 
 print("\nTest data:")
@@ -45,7 +45,7 @@ print(y_test.shape)
 
 
 # Load scalers
-y_scaler = joblib.load(data_path / "y_scaler.pkl")
+y_scaler = joblib.load(data_path / "y_scaler2.pkl")
 
 # Convert data to tensors
 X_test_tensor = torch.tensor(

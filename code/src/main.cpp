@@ -1,94 +1,147 @@
-#include "models/black_scholes_model.h"
 #include "models/merton_jump_diffusion_model.h"
 
+#include "derivatives/call_option.h"
+#include "derivatives/put_option.h"
+
+#include "pricers/monte_carlo_pricer.h"
 #include "utils/random_generator.h"
 
 #include <iostream>
-#include <cmath>
+#include <iomanip>
+
 
 int main() {
 
-    // Parameters
-    double S0 = 100.0;
-    double r = 0.05;
-    double d = 0.00;
-    double sigma = 0.20;
-    double T = 1.0;
-
-    int N = 1000000;
 
     RandomGenerator rng(42);
 
-    // =====================================================
-    // TEST 1: lambda = 0  --> MJD should equal BS
-    // =====================================================
 
-    BlackScholesModel bs_model(S0, r, d, sigma);
+    // Market parameters
 
-    MertonJumpDiffusionModel mjd_model(
-        S0,
-        r,
-        d,
-        sigma,
-        0.0,   // lambda
-        0.0,   // muJ
-        0.2    // sigmaJ
-    );
+    double S0 = 100.0;
 
-    double bs_sum = 0.0;
-    double mjd_sum = 0.0;
+    double r = 0.05;        // risk-free interest rate
+    double d = 0.02;        // dividend yield
 
-    for (int i = 0; i < N; ++i) {
-        bs_sum += bs_model.simulate_terminal_price(rng, T);
-        mjd_sum += mjd_model.simulate_terminal_price(rng, T);
-    }
-
-    double bs_mean = bs_sum / N;
-    double mjd_mean = mjd_sum / N;
-
-    std::cout << "=========================\n";
-    std::cout << "TEST 1: lambda = 0\n";
-    std::cout << "=========================\n";
-
-    std::cout << "BS mean ST  = " << bs_mean << '\n';
-    std::cout << "MJD mean ST = " << mjd_mean << '\n';
-    std::cout << "Difference  = " << std::abs(bs_mean - mjd_mean) << "\n\n";
+    double sigma = 0.25;
 
 
-    // =====================================================
-    // TEST 2: Martingale property
-    // =====================================================
+    // Merton jump parameters
 
-    double lambda = 1.0;
+    double lambda = 0.5;
+    double muJ = -0.1;
+    double sigmaJ = 0.2;
 
-    MertonJumpDiffusionModel mjd_model2(
+
+
+    // Option parameters
+
+    double K = 100.0;
+    double T = 1.0;
+
+
+
+    MertonJumpDiffusionModel model(
         S0,
         r,
         d,
         sigma,
         lambda,
-        0.0,   // muJ
-        0.2    // sigmaJ
+        muJ,
+        sigmaJ
     );
 
-    double st_sum = 0.0;
 
-    for (int i = 0; i < N; ++i) {
-        st_sum += mjd_model2.simulate_terminal_price(rng, T);
-    }
 
-    double simulated_mean = st_sum / N;
-    double theoretical_mean = S0 * std::exp((r - d) * T);
+    CallOption call(K);
+    PutOption put(K);
 
-    std::cout << "=========================\n";
-    std::cout << "TEST 2: Martingale\n";
-    std::cout << "=========================\n";
 
-    std::cout << "Simulated E[ST]  = " << simulated_mean << '\n';
-    std::cout << "Theoretical E[ST] = " << theoretical_mean << '\n';
-    std::cout << "Difference        = "
-              << std::abs(simulated_mean - theoretical_mean)
-              << '\n';
+
+    MonteCarloPricer pricer;
+
+
+
+    int simulations = 100000;
+
+
+
+    Pricer::Result call_result = pricer.price(
+        model,
+        call,
+        rng,
+        r,
+        T,
+        simulations
+    );
+
+
+    Pricer::Result put_result = pricer.price(
+        model,
+        put,
+        rng,
+        r,
+        T,
+        simulations
+    );
+
+
+
+    std::cout << std::fixed
+              << std::setprecision(6);
+
+
+
+    std::cout << "\n===== Merton Jump Diffusion =====\n\n";
+
+
+    std::cout << "Underlying:\n";
+    std::cout << "S0 = " << S0 << "\n";
+
+
+    std::cout << "\nOption:\n";
+    std::cout << "K  = " << K << "\n";
+    std::cout << "T  = " << T << "\n";
+
+
+    std::cout << "\nMarket:\n";
+    std::cout << "r = " << r << "\n";
+    std::cout << "d = " << d << "\n";
+
+
+    std::cout << "\nVolatility:\n";
+    std::cout << "sigma = " << sigma << "\n";
+
+
+    std::cout << "\nJump parameters:\n";
+    std::cout << "lambda = " << lambda << "\n";
+    std::cout << "muJ = " << muJ << "\n";
+    std::cout << "sigmaJ = " << sigmaJ << "\n";
+
+
+
+    std::cout << "\nMonte Carlo results:\n";
+
+
+    std::cout << "\nCall:\n";
+    std::cout << "Price: "
+              << call_result.price
+              << "\n";
+
+    std::cout << "Standard Error: "
+              << call_result.standard_error
+              << "\n";
+
+
+    std::cout << "\nPut:\n";
+    std::cout << "Price: "
+              << put_result.price
+              << "\n";
+
+    std::cout << "Standard Error: "
+              << put_result.standard_error
+              << "\n";
+
 
     return 0;
 }

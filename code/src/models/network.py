@@ -6,7 +6,7 @@ class PricingNetwork(nn.Module):
         super().__init__()
 
         self.network = nn.Sequential(
-            nn.Linear(8, 128), 
+            nn.Linear(9, 128), 
             nn.ReLU(), 
 
             nn.Linear(128, 128), 
@@ -15,7 +15,13 @@ class PricingNetwork(nn.Module):
             nn.Linear(128, 64), 
             nn.ReLU(), 
 
-            nn.Linear(64, 1)
+            nn.Linear(64, 1) 
+            # The model was returning negative prices,
+            # So i added Softplus to force positive outputs
+            # nn.Softplus()
+            
+            # Well... That didn't work, the model didn't learn anything
+            # I'll just use np.maximum() when evaluating
         )
 
     def forward(self, x):

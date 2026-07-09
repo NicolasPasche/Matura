@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 # Project paths
+
 project_root = Path(__file__).parent.parent.parent.parent
 
 sys.path.append(str(project_root / "code" / "src"))
@@ -18,7 +19,7 @@ from models.network import PricingNetwork
 
 data_path = project_root / "data" / "processed"
 
-model_path = project_root / "models" / "best_model.pth"
+model_path = project_root / "models" / "best_model_dividend.pth"
 
 model_path.parent.mkdir(
     parents=True,
@@ -27,6 +28,7 @@ model_path.parent.mkdir(
 
 
 # Device
+
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
 )
@@ -39,20 +41,21 @@ if device.type == "cuda":
 
 
 # Load processed data
+
 X_train = np.load(
-    data_path / "X_train.npy"
+    data_path / "X_train2.npy"
 )
 
 X_val = np.load(
-    data_path / "X_val.npy"
+    data_path / "X_val2.npy"
 )
 
 y_train = np.load(
-    data_path / "y_train.npy"
+    data_path / "y_train2.npy"
 )
 
 y_val = np.load(
-    data_path / "y_val.npy"
+    data_path / "y_val2.npy"
 )
 
 
@@ -62,6 +65,7 @@ print(y_train.shape)
 
 
 # Convert data to tensors
+
 X_train = torch.tensor(
     X_train,
     dtype=torch.float32
@@ -88,6 +92,7 @@ print(X_train.shape)
 
 
 # Create datasets
+
 train_dataset = TensorDataset(
     X_train,
     y_train
@@ -100,6 +105,7 @@ val_dataset = TensorDataset(
 
 
 # Data loaders
+
 BATCH_SIZE = 4096
 
 
@@ -122,14 +128,21 @@ val_loader = DataLoader(
 
 
 # Initialize model
+
 model = PricingNetwork().to(device)
 
 
 print("\nModel:")
 print(model)
 
+print(
+    f"\nNumber of parameters: "
+    f"{sum(p.numel() for p in model.parameters()):,}"
+)
+
 
 # Loss and optimizer
+
 criterion = nn.MSELoss()
 
 optimizer = torch.optim.Adam(
@@ -139,6 +152,7 @@ optimizer = torch.optim.Adam(
 
 
 # Training parameters
+
 EPOCHS = 100
 
 best_val_loss = float("inf")
@@ -149,10 +163,12 @@ val_losses = []
 
 print("\nTraining started...\n")
 
+
 start_time = time.time()
 
 
 # Training loop
+
 for epoch in range(EPOCHS):
 
     model.train()
@@ -161,6 +177,7 @@ for epoch in range(EPOCHS):
 
 
     for X_batch, y_batch in train_loader:
+
 
         X_batch = X_batch.to(
             device,
@@ -199,6 +216,7 @@ for epoch in range(EPOCHS):
 
 
     # Validation
+
     model.eval()
 
     running_val_loss = 0.0
@@ -207,6 +225,7 @@ for epoch in range(EPOCHS):
     with torch.no_grad():
 
         for X_batch, y_batch in val_loader:
+
 
             X_batch = X_batch.to(
                 device,
@@ -249,16 +268,21 @@ for epoch in range(EPOCHS):
 
 
     # Save best model
+
     if val_loss < best_val_loss:
 
+
         best_val_loss = val_loss
+
 
         torch.save(
             model.state_dict(),
             model_path
         )
 
+
         print("Saved best model.")
+
 
 
 training_time = time.time() - start_time

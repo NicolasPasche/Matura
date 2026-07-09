@@ -4,17 +4,14 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-df = pd.read_csv('../data/merton_dataset.csv')
+df = pd.read_csv('../data/merton_dataset2.csv')
 
 # Just to reassure
 print(df.shape)
 
 # x = input dataframe, y = target dataframe
-x = df.drop(columns=['price'])
+x = df.drop(columns=['price','standard_error','lower_CI','upper_CI'])
 y = df['price']
-
-# print(x.shape)
-# print(y.shape)
 
 # First split: train + validation + temporary
 X_train, X_temp, y_train, y_temp = train_test_split(
@@ -62,25 +59,24 @@ print("Train mean:", y_train.mean())
 print("Train std:", y_train.std())
 
 
-
 # Save processed data
-np.save("../data/processed/X_train.npy", X_train)
-np.save("../data/processed/X_val.npy", X_val)
-np.save("../data/processed/X_test.npy", X_test)
+np.save("../data/processed/X_train2.npy", X_train)
+np.save("../data/processed/X_val2.npy", X_val)
+np.save("../data/processed/X_test2.npy", X_test)
 
-np.save("../data/processed/y_train.npy", y_train)
-np.save("../data/processed/y_val.npy", y_val)
-np.save("../data/processed/y_test.npy", y_test)
+np.save("../data/processed/y_train2.npy", y_train)
+np.save("../data/processed/y_val2.npy", y_val)
+np.save("../data/processed/y_test2.npy", y_test)
 
 
 joblib.dump(
     x_scaler,
-    "../data/processed/x_scaler.pkl"
+    "../data/processed/x_scaler2.pkl"
 )
 
 joblib.dump(
     y_scaler,
-    "../data/processed/y_scaler.pkl"
+    "../data/processed/y_scaler2.pkl"
 )
 
 print("Dataset preparation finished.")
