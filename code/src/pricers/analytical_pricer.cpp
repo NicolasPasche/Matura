@@ -1,22 +1,25 @@
-/* 
-Ugliest code EVER written...
+#include "analytical_pricer.h"
 
-I really couldn't find an elegant way to build an analytical pricer, because I want my derivatives to be in 
-seperte classes, and I don't want to build a seperate pricer for each derivative.
+#include "../derivatives/call_option.h"
+#include "../derivatives/put_option.h"
+#include "../derivatives/digital_call_option.h"
+#include "../derivatives/digital_put_option.h"
+#include "../derivatives/forward_contract.h"
+#include "../derivatives/zero_coupon_bond.h"
 
-So I had to go down the if statement path...
-
-I had major problems building this pricer, which is visible in the out-dated comments. Just don't 
-get confused when you don't get them. I'll maybe clean up later, but not now.
-*/
-#include "../pricers/analytical_pricer.h"
 #include <cmath>
 #include <stdexcept>
-#include <iostream>
 
-static double norm_cdf(double x) {
-    return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
+
+namespace {
+
+// Using erfc gives better numerical accuracy for very small probabilities.
+double normal_cdf(double x) {
+    return 0.5 * std::erfc(-x / std::sqrt(2.0));
 }
+
+}
+
 
 double AnalyticalPricer::price(
     const BlackScholesModel& model,
@@ -24,76 +27,96 @@ double AnalyticalPricer::price(
     double T
 ) const {
 
-    double S0 = model.getS();
-    double r = model.getR();
-    double d = model.getD();
-    double sigma = model.getSigma();
+    const double S0 = model.getS();
+    const double r = model.getR();
+    const double d = model.getD();
+    const double sigma = model.getSigma();
 
-    std::string type = typeid(derivative).name();
+    if (!std::isfinite(S0) || !std::isfinite(r) ||
+        !std::isfinite(d) || !std::isfinite(sigma) ||
+        !std::isfinite(T) ||
+        S0 <= 0.0 || sigma < 0.0 || T < 0.0) {
 
-    // std::cout << "[DEBUG] type = " << type << std::endl;
+        throw std::invalid_argument("Invalid Black-Scholes parameters");
+    }
 
-    // -------------------------
-    // FORWARD
-    // -------------------------
-    
-
-    // -------------------------
-    // ZERO COUPON BOND
-    // -------------------------
-    if (type == "14ZeroCouponBond") {
+    // Bonds and forwards do not require the Black-Scholes option formulas.
+    if (dynamic_cast<const ZeroCouponBond*>(&derivative)) {
         return std::exp(-r * T);
     }
 
-    // -------------------------
-    // STRIKE-BASED INSTRUMENTS
-    // -------------------------
-    double K = derivative.getStrike();
+    if (dynamic_cast<const ForwardContract*>(&derivative)) {
+        const double K = derivative.getStrike();
 
-    if (K <= 0.0) {
-        throw std::invalid_argument("Invalid strike for option-type derivative");
+        if (!std::isfinite(K) || K <= 0.0) {
+            throw std::invalid_argument("Invalid forward strike");
+        }
+
+        return S0 * std::exp(-d * T)
+             - K * std::exp(-r * T);
     }
 
-    double sqrtT = std::sqrt(T);
+    // The derivative classes are kept separate, but share one pricer.
+    const bool is_call =
+        dynamic_cast<const CallOption*>(&derivative) != nullptr;
 
-    double d1 = (std::log(S0 / K) + (r - d + 0.5 * sigma * sigma) * T)
-                / (sigma * sqrtT);
+    const bool is_put =
+        dynamic_cast<const PutOption*>(&derivative) != nullptr;
 
-    double d2 = d1 - sigma * sqrtT;
+    const bool is_digital_call =
+        dynamic_cast<const DigitalCallOption*>(&derivative) != nullptr;
 
-    // CALL
-    if (type == "10CallOption") {
+    const bool is_digital_put =
+        dynamic_cast<const DigitalPutOption*>(&derivative) != nullptr;
 
-        // Printing model parameters for debugging
-        // std::cout << "d1 = " << d1 << '\n';
-        // std::cout << "d2 = " << d2 << '\n';
-        // std::cout << "N(d1) = " << norm_cdf(d1) << '\n';
-        // std::cout << "N(d2) = " << norm_cdf(d2) << '\n';
-
-        return S0 * std::exp(-d * T) * norm_cdf(d1)
-             - K * std::exp(-r * T) * norm_cdf(d2);
+    if (!is_call && !is_put && !is_digital_call && !is_digital_put) {
+        throw std::invalid_argument("Unsupported derivative type");
     }
 
-    if (type == "15ForwardContract") {
-        double K = derivative.getStrike();
-        return S0 * std::exp(-d * T) - K * std::exp(-r * T);
+    const double K = derivative.getStrike();
+
+    if (!std::isfinite(K) || K <= 0.0) {
+        throw std::invalid_argument("Invalid option strike");
     }
 
-    // PUT
-    if (type == "9PutOption") {
-        return K * std::exp(-r * T) * norm_cdf(-d2)
-             - S0 * std::exp(-d * T) * norm_cdf(-d1);
+    // Without time or volatility, the terminal stock price is known.
+    // The existing payoff function handles these cases without division by zero.
+    if (T == 0.0 || sigma == 0.0) {
+        const double ST = S0 * std::exp((r - d) * T);
+
+        return std::exp(-r * T) * derivative.payoff(ST);
     }
 
-    // DIGITAL CALL
-    if (type == "17DigitalCallOption") {
-        return std::exp(-r * T) * norm_cdf(d2);
+    // All four option types use the same d1 and d2 values.
+    const double sqrtT = std::sqrt(T);
+
+    const double d1 =
+        (std::log(S0 / K) + (r - d + 0.5 * sigma * sigma) * T)
+        / (sigma * sqrtT);
+
+    const double d2 = d1 - sigma * sqrtT;
+
+    const double discounted_stock = S0 * std::exp(-d * T);
+    const double discounted_strike = K * std::exp(-r * T);
+    const double discounted_unit = std::exp(-r * T);
+
+    if (is_call) {
+        return discounted_stock * normal_cdf(d1)
+             - discounted_strike * normal_cdf(d2);
     }
 
-    // DIGITAL PUT
-    if (type == "16DigitalPutOption") {
-        return std::exp(-r * T) * norm_cdf(-d2);
+    if (is_put) {
+        return discounted_strike * normal_cdf(-d2)
+             - discounted_stock * normal_cdf(-d1);
     }
 
-    throw std::invalid_argument("Unsupported type: " + type);
+    if (is_digital_call) {
+        return discounted_unit * normal_cdf(d2);
+    }
+
+    if (is_digital_put) {
+        return discounted_unit * normal_cdf(-d2);
+    }
+
+    throw std::logic_error("Unexpected derivative type");
 }

@@ -1,9 +1,9 @@
 #pragma once
 
-#include "../models/black_scholes_model.h"
+#include "../models/black_scholes_model.h" 
 #include "../derivatives/derivative.h"
 
-class AnalyticalPricer{
+class AnalyticalPricer {
     public:
         double price(
             const BlackScholesModel& model, 
