@@ -6,16 +6,16 @@
 #include <cmath>
 #include <string>
 
-#include "src/models/black_scholes_model.h"
+#include "models/black_scholes_model.h"
 
-#include "src/derivatives/call_option.h"
-#include "src/derivatives/put_option.h"
-#include "src/derivatives/digital_call_option.h"
-#include "src/derivatives/digital_put_option.h"
-#include "src/derivatives/forward_contract.h"
-#include "src/derivatives/zero_coupon_bond.h"
+#include "derivatives/call_option.h"
+#include "derivatives/put_option.h"
+#include "derivatives/digital_call_option.h"
+#include "derivatives/digital_put_option.h"
+#include "derivatives/forward_contract.h"
+#include "derivatives/zero_coupon_bond.h"
 
-#include "src/pricers/analytical_pricer.h"
+#include "pricers/analytical_pricer.h"
 
 
 // A small tolerance is necessary because floating-point calculations
