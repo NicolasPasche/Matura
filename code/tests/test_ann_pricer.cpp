@@ -25,54 +25,42 @@ bool test_prediction(
     double muJ,
     double sigmaJ
 ) {
-    MertonJumpDiffusionModel model(
-        S0, r, d, sigma, lambda, muJ, sigmaJ
-    );
-
+    MertonJumpDiffusionModel model(S0, r, d, sigma, lambda, muJ, sigmaJ);
     CallOption call(K);
 
-    // Repeating the same prediction helps detect unexpected changes
-    // between evaluations of the same input.
-    const double price1 =
-        pricer.price(model, call, rng, r, T, 0).price;
-
-    const double price2 =
-        pricer.price(model, call, rng, r, T, 0).price;
+    // I want to make sure identical inputs always produce identical predictions.
+    const double price1 = pricer.price(model, call, rng, r, T, 0).price;
+    const double price2 = pricer.price(model, call, rng, r, T, 0).price;
 
     const bool finite = std::isfinite(price1);
+
     const bool reproducible =
         finite && std::isfinite(price2) &&
         std::abs(price1 - price2) < 1e-5;
 
-    // A call cannot be worth more than the dividend-adjusted stock price.
-    // Neural networks may violate this bound slightly due to approximation errors.
+    // A European call must stay between zero and the discounted stock price.
     const double upper_bound = S0 * std::exp(-d * T);
 
     const bool valid_range =
         finite && price1 >= 0.0 && price1 <= upper_bound;
 
-    const bool passed =
-        finite && reproducible && valid_range;
+    const bool passed = finite && reproducible && valid_range;
 
     std::cout
         << (passed ? "[PASS] " : "[FAIL] ")
         << "S0=" << std::setw(6) << S0
         << " K=" << std::setw(6) << K
         << " T=" << std::setw(5) << T
-        << " Price=" << price1
-        << '\n';
+        << " Price=" << price1 << '\n';
 
-    if (!finite) {
+    if (!finite)
         std::cout << "       Prediction is not finite.\n";
-    }
 
-    if (!reproducible) {
+    if (!reproducible)
         std::cout << "       Repeated predictions differ.\n";
-    }
 
-    if (!valid_range) {
+    if (!valid_range)
         std::cout << "       Prediction violates call price bounds.\n";
-    }
 
     return passed;
 }
@@ -80,17 +68,32 @@ bool test_prediction(
 
 int main(int argc, char* argv[]) {
 
-    // The model path is passed as an argument so the test works
-    // independently of where the trained model is stored.
-    if (argc != 2) {
+    // I want to switch between the two ANNs without recompiling.
+    if (argc < 2 || argc > 3) {
         std::cerr
             << "Usage: " << argv[0]
-            << " <path_to_model.pt>\n";
-
+            << " <path_to_model.pt> [analytical]\n";
         return 1;
     }
 
     const std::string model_path = argv[1];
+
+    const bool analytical =
+        argc == 3 && std::string(argv[2]) == "analytical";
+
+    if (argc == 3 && !analytical) {
+        std::cerr << "Unknown model type: " << argv[2] << '\n';
+        return 1;
+    }
+
+    // Both networks share the input scaler, but not the output scaler.
+    const double y_mean = analytical
+        ? 22.223006564152026
+        : 22.22354624;
+
+    const double y_scale = analytical
+        ? 22.047419209093864
+        : 22.05475308;
 
     std::cout << std::fixed << std::setprecision(6);
 
@@ -98,18 +101,20 @@ int main(int argc, char* argv[]) {
 
     std::cout
         << "CUDA available: "
-        << (torch::cuda::is_available() ? "Yes" : "No")
-        << '\n';
+        << (torch::cuda::is_available() ? "Yes" : "No") << '\n';
 
     std::cout
         << "Selected device: "
-        << (torch::cuda::is_available() ? "CUDA" : "CPU")
-        << '\n';
+        << (torch::cuda::is_available() ? "CUDA" : "CPU") << '\n';
 
-    std::cout << "Model: " << "/home/nicolas/Dokumente/Schule/Matura Thesis/derivatives_pricing_eninge/models/best_model_dividend.pt" << "\n\n";
+    std::cout
+        << "ANN type: "
+        << (analytical ? "Analytical" : "Monte Carlo") << '\n';
+
+    std::cout << "Model: " << model_path << "\n\n";
 
     try {
-        ANN_Pricer pricer(model_path);
+        ANN_Pricer pricer(model_path, y_mean, y_scale);
 
         std::cout << "Model loaded successfully.\n\n";
 
@@ -128,31 +133,24 @@ int main(int argc, char* argv[]) {
         int passed = 0;
         const int total = 3;
 
-        // Different strikes check that the model responds to changes
-        // in moneyness rather than returning a constant prediction.
+        // Different strikes should produce different option prices.
         passed += test_prediction(
-            pricer, rng,
-            S0, 80.0, T, r, d,
+            pricer, rng, S0, 80.0, T, r, d,
             sigma, lambda, muJ, sigmaJ
         );
 
         passed += test_prediction(
-            pricer, rng,
-            S0, 100.0, T, r, d,
+            pricer, rng, S0, 100.0, T, r, d,
             sigma, lambda, muJ, sigmaJ
         );
 
         passed += test_prediction(
-            pricer, rng,
-            S0, 120.0, T, r, d,
+            pricer, rng, S0, 120.0, T, r, d,
             sigma, lambda, muJ, sigmaJ
         );
 
         std::cout << "\n-----------------------------\n";
-
-        std::cout
-            << "Passed: " << passed
-            << " / " << total << '\n';
+        std::cout << "Passed: " << passed << " / " << total << '\n';
 
         if (passed == total) {
             std::cout << "All ANN tests passed.\n";
@@ -163,11 +161,7 @@ int main(int argc, char* argv[]) {
         return 1;
 
     } catch (const std::exception& e) {
-
-        std::cerr
-            << "\nANN test failed:\n"
-            << e.what() << '\n';
-
+        std::cerr << "\nANN test failed:\n" << e.what() << '\n';
         return 1;
     }
 }

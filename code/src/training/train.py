@@ -1,294 +1,196 @@
+import argparse
+import random
+import sys
+import time
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 
-import sys
-import time
-from pathlib import Path
-
 
 # Project paths
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+DATA_PATH = PROJECT_ROOT / "data" / "processed"
+MODEL_PATH = PROJECT_ROOT / "models"
 
-project_root = Path(__file__).parent.parent.parent.parent
-
-sys.path.append(str(project_root / "code" / "src"))
-
+sys.path.append(str(PROJECT_ROOT / "code" / "src"))
 from models.network import PricingNetwork
 
 
-data_path = project_root / "data" / "processed"
-
-model_path = project_root / "models" / "best_model_dividend.pth"
-
-model_path.parent.mkdir(
-    parents=True,
-    exist_ok=True
-)
-
-
-# Device
-
-device = torch.device(
-    "cuda" if torch.cuda.is_available() else "cpu"
-)
-
-print(f"Using device: {device}")
-
-
-if device.type == "cuda":
-    torch.backends.cudnn.benchmark = True
-
-
-# Load processed data
-
-X_train = np.load(
-    data_path / "X_train2.npy"
-)
-
-X_val = np.load(
-    data_path / "X_val2.npy"
-)
-
-y_train = np.load(
-    data_path / "y_train2.npy"
-)
-
-y_val = np.load(
-    data_path / "y_val2.npy"
-)
-
-
-print("\nTraining data:")
-print(X_train.shape)
-print(y_train.shape)
-
-
-# Convert data to tensors
-
-X_train = torch.tensor(
-    X_train,
-    dtype=torch.float32
-)
-
-X_val = torch.tensor(
-    X_val,
-    dtype=torch.float32
-)
-
-y_train = torch.tensor(
-    y_train,
-    dtype=torch.float32
-)
-
-y_val = torch.tensor(
-    y_val,
-    dtype=torch.float32
-)
-
-
-print("\nTensor shape:")
-print(X_train.shape)
-
-
-# Create datasets
-
-train_dataset = TensorDataset(
-    X_train,
-    y_train
-)
-
-val_dataset = TensorDataset(
-    X_val,
-    y_val
-)
-
-
-# Data loaders
-
-BATCH_SIZE = 4096
-
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=True,
-    num_workers=8,
-    pin_memory=True
-)
-
-
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=8,
-    pin_memory=True
-)
-
-
-# Initialize model
-
-model = PricingNetwork().to(device)
-
-
-print("\nModel:")
-print(model)
-
-print(
-    f"\nNumber of parameters: "
-    f"{sum(p.numel() for p in model.parameters()):,}"
-)
-
-
-# Loss and optimizer
-
-criterion = nn.MSELoss()
-
-optimizer = torch.optim.Adam(
-    model.parameters(),
-    lr=0.001
-)
-
-
 # Training parameters
-
+BATCH_SIZE = 4096
 EPOCHS = 100
-
-best_val_loss = float("inf")
-
-train_losses = []
-val_losses = []
+LEARNING_RATE = 0.001
+SEED = 42
 
 
-print("\nTraining started...\n")
+def set_seed(seed):
+    # I want both networks to start under the same conditions.
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.benchmark = False
 
 
-start_time = time.time()
+def load_data(dataset_type):
+    # Both networks get the same inputs. Only the target prices change.
+    X_train = np.load(DATA_PATH / "X_train_comparison.npy")
+    X_val = np.load(DATA_PATH / "X_val_comparison.npy")
+
+    suffix = "analytical" if dataset_type == "analytical" else "mc_comparison"
+
+    y_train = np.load(DATA_PATH / f"y_train_{suffix}.npy")
+    y_val = np.load(DATA_PATH / f"y_val_{suffix}.npy")
+
+    print(f"\nTraining data: {X_train.shape}, {y_train.shape}")
+    print(f"Validation data: {X_val.shape}, {y_val.shape}")
+
+    if X_train.shape[1] != 9 or X_val.shape[1] != 9:
+        raise ValueError("Expected 9 input features.")
+
+    if y_train.shape != (len(X_train), 1) or y_val.shape != (len(X_val), 1):
+        raise ValueError("Invalid target dimensions.")
+
+    arrays = [X_train, X_val, y_train, y_val]
+
+    if not all(np.isfinite(array).all() for array in arrays):
+        raise ValueError("Dataset contains invalid values.")
+
+    return [
+        torch.tensor(array, dtype=torch.float32)
+        for array in arrays
+    ]
 
 
-# Training loop
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", choices=["mc", "analytical"], required=True)
+    args = parser.parse_args()
 
-for epoch in range(EPOCHS):
+    set_seed(SEED)
 
-    model.train()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+    print(f"Dataset: {args.dataset}")
 
-    running_train_loss = 0.0
+    MODEL_PATH.mkdir(parents=True, exist_ok=True)
 
+    filename = (
+        "best_model_analytical.pth"
+        if args.dataset == "analytical"
+        else "best_model_mc_comparison.pth"
+    )
+    save_path = MODEL_PATH / filename
 
-    for X_batch, y_batch in train_loader:
+    # I really don't want to overwrite my original trained model.
+    if save_path.exists():
+        raise FileExistsError(f"Model already exists: {save_path}")
 
+    X_train, X_val, y_train, y_val = load_data(args.dataset)
 
-        X_batch = X_batch.to(
-            device,
-            non_blocking=True
-        )
+    train_dataset = TensorDataset(X_train, y_train)
+    val_dataset = TensorDataset(X_val, y_val)
 
-        y_batch = y_batch.to(
-            device,
-            non_blocking=True
-        )
+    generator = torch.Generator().manual_seed(SEED)
 
-
-        predictions = model(X_batch)
-
-
-        loss = criterion(
-            predictions,
-            y_batch
-        )
-
-
-        optimizer.zero_grad()
-
-        loss.backward()
-
-        optimizer.step()
-
-
-        running_train_loss += loss.item()
-
-
-    train_loss = (
-        running_train_loss /
-        len(train_loader)
+    train_loader = DataLoader(
+        train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+        num_workers=8, pin_memory=(device.type == "cuda"),
+        generator=generator
     )
 
+    val_loader = DataLoader(
+        val_dataset, batch_size=BATCH_SIZE, shuffle=False,
+        num_workers=8, pin_memory=(device.type == "cuda")
+    )
 
-    # Validation
+    model = PricingNetwork().to(device)
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    model.eval()
+    print("\nModel:")
+    print(model)
+    print(f"Parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-    running_val_loss = 0.0
+    best_val_loss = float("inf")
+    train_losses, val_losses = [], []
 
+    print("\nTraining started...\n")
+    start_time = time.time()
 
-    with torch.no_grad():
+    for epoch in range(EPOCHS):
 
-        for X_batch, y_batch in val_loader:
+        # Training
+        model.train()
+        train_loss = 0.0
 
-
-            X_batch = X_batch.to(
-                device,
-                non_blocking=True
-            )
-
-            y_batch = y_batch.to(
-                device,
-                non_blocking=True
-            )
-
+        for X_batch, y_batch in train_loader:
+            X_batch = X_batch.to(device, non_blocking=True)
+            y_batch = y_batch.to(device, non_blocking=True)
 
             predictions = model(X_batch)
+            loss = criterion(predictions, y_batch)
 
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-            loss = criterion(
-                predictions,
-                y_batch
-            )
+            train_loss += loss.item() * X_batch.size(0)
 
+        train_loss /= len(train_dataset)
 
-            running_val_loss += loss.item()
+        # Validation
+        model.eval()
+        val_loss = 0.0
 
+        with torch.no_grad():
+            for X_batch, y_batch in val_loader:
+                X_batch = X_batch.to(device, non_blocking=True)
+                y_batch = y_batch.to(device, non_blocking=True)
 
-    val_loss = (
-        running_val_loss /
-        len(val_loader)
-    )
+                predictions = model(X_batch)
+                loss = criterion(predictions, y_batch)
 
+                val_loss += loss.item() * X_batch.size(0)
 
-    train_losses.append(train_loss)
-    val_losses.append(val_loss)
+        val_loss /= len(val_dataset)
 
+        if not np.isfinite(train_loss) or not np.isfinite(val_loss):
+            raise RuntimeError("Training produced an invalid loss.")
 
-    print(
-        f"Epoch [{epoch+1}/{EPOCHS}] "
-        f"Train Loss: {train_loss:.6f} "
-        f"Val Loss: {val_loss:.6f}"
-    )
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
 
-
-    # Save best model
-
-    if val_loss < best_val_loss:
-
-
-        best_val_loss = val_loss
-
-
-        torch.save(
-            model.state_dict(),
-            model_path
+        print(
+            f"Epoch [{epoch + 1}/{EPOCHS}] "
+            f"Train Loss: {train_loss:.6f} "
+            f"Val Loss: {val_loss:.6f}"
         )
 
+        # The last epoch isn't necessarily the best one.
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), save_path)
+            print("Saved best model.")
 
-        print("Saved best model.")
+    training_time = time.time() - start_time
+
+    # The learning curves might be useful for my thesis later.
+    np.savez(
+        MODEL_PATH / f"training_history_{args.dataset}.npz",
+        train_loss=np.array(train_losses),
+        val_loss=np.array(val_losses)
+    )
+
+    print("\nTraining finished.")
+    print(f"Best validation loss: {best_val_loss:.6f}")
+    print(f"Training time: {training_time:.2f} seconds")
+    print(f"Model saved to: {save_path}")
 
 
-
-training_time = time.time() - start_time
-
-
-print("\nTraining finished.")
-print(f"Best validation loss: {best_val_loss:.6f}")
-print(f"Training time: {training_time:.2f} seconds")
-print(f"Model saved to: {model_path}")
+if __name__ == "__main__":
+    main()

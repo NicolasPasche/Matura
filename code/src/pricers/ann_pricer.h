@@ -8,12 +8,14 @@
 #include <string>
 #include <array>
 
+
 class ANN_Pricer : public Pricer {
 private:
 
     mutable torch::jit::script::Module model;
     torch::Device device;
 
+    // Both ANNs were trained with the same input parameters.
     const std::array<double, 9> x_mean = {
         99.9920428,
         99.9648586,
@@ -38,22 +40,30 @@ private:
         0.129855032
     };
 
-    const double y_mean = 22.22354624;
-    const double y_scale = 22.05475308;
+    // The output scaler depends on which ANN I want to use.
+    const double y_mean;
+    const double y_scale;
 
 public:
 
-    explicit ANN_Pricer(const std::string& model_path)
-        : device(
-            torch::cuda::is_available()
-                ? torch::kCUDA
-                : torch::kCPU
-        ),
-          model(torch::jit::load(model_path, torch::kCPU))
+    explicit ANN_Pricer(
+        const std::string& model_path,
+        double output_mean = 22.22354624,
+        double output_scale = 22.05475308
+    )
+        : model(torch::jit::load(model_path, torch::kCPU)),
+          device(
+              torch::cuda::is_available()
+                  ? torch::kCUDA
+                  : torch::kCPU
+          ),
+          y_mean(output_mean),
+          y_scale(output_scale)
     {
         model.to(device);
         model.eval();
     }
+
 
     Result price(
         const Model& underlying,
@@ -64,7 +74,7 @@ public:
         int
     ) const override {
 
-        // 1. Construct input vector
+        // Construct the input vector in the same order as during training.
         std::array<double, 9> input = {
             underlying.getS(),
             derivative.getStrike(),
@@ -77,34 +87,32 @@ public:
             underlying.getSigmaJ()
         };
 
-        // 2. Standardize input
+        // Standardize the inputs using the training data statistics.
         std::array<float, 9> scaled_input;
 
         for (int i = 0; i < 9; ++i) {
-            scaled_input[i] =
-                static_cast<float>(
-                    (input[i] - x_mean[i]) / x_scale[i]
-                );
+            scaled_input[i] = static_cast<float>(
+                (input[i] - x_mean[i]) / x_scale[i]
+            );
         }
 
-        // 3. Convert to tensor
+        // Convert the input into a tensor and move it to the selected device.
         auto x = torch::from_blob(
             scaled_input.data(),
             {1, 9},
             torch::TensorOptions().dtype(torch::kFloat32)
         ).clone().to(device);
 
-        // 4. Neural network prediction
+        // I only need predictions, so there's no reason to track gradients.
         torch::NoGradGuard no_grad;
 
         auto output = model.forward({x}).toTensor();
 
-        // 5. Convert prediction back from standardized scale
+        // Convert the standardized prediction back into an option price.
         double prediction_scaled = output.item<double>();
 
-        double price =
-            prediction_scaled * y_scale + y_mean;
+        double predicted_price = prediction_scaled * y_scale + y_mean;
 
-        return {price, 0.0};
+        return {predicted_price, 0.0};
     }
 };

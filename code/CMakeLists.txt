@@ -61,6 +61,17 @@ target_include_directories(test_merton_analytical_pricer PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
+# Generate analytical Merton training data
+add_executable(generate_merton_analytical_dataset
+    src/utils/merton_dataset_generator.cpp
+    src/pricers/merton_analytical_pricer.cpp
+    src/utils/random_generator.cpp
+)
+
+target_include_directories(generate_merton_analytical_dataset PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/src"
+)
+
 # ANN pricer test
 add_executable(test_ann_pricer
     tests/test_ann_pricer.cpp
