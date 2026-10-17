@@ -1,244 +1,215 @@
 #include <iostream>
 #include <iomanip>
-#include <cmath>
 #include <string>
+#include <filesystem>
+#include <exception>
 
 #include "models/black_scholes_model.h"
+#include "models/merton_jump_diffusion_model.h"
 
 #include "derivatives/call_option.h"
-#include "derivatives/put_option.h"
-#include "derivatives/digital_call_option.h"
-#include "derivatives/digital_put_option.h"
-#include "derivatives/forward_contract.h"
-#include "derivatives/zero_coupon_bond.h"
 
 #include "pricers/analytical_pricer.h"
+#include "pricers/merton_analytical_pricer.h"
+#include "pricers/monte_carlo_pricer.h"
+#include "pricers/ann_pricer.h"
 
+#include "utils/random_generator.h"
 
-// A small tolerance is necessary because floating-point calculations
-// cannot always represent mathematical results exactly.
-bool approximately_equal(
-    double actual,
-    double expected,
-    double tolerance = 1e-9
-) {
-    return std::isfinite(actual)
-        && std::isfinite(expected)
-        && std::abs(actual - expected) <= tolerance;
+void print_banner() {
+    std::cout << R"(
+========================================================================
+
+ ██████╗ ███████╗██████╗ ██╗██╗   ██╗ █████╗ ████████╗██╗██╗   ██╗███████╗███████╗
+ ██╔══██╗██╔════╝██╔══██╗██║██║   ██║██╔══██╗╚══██╔══╝██║██║   ██║██╔════╝██╔════╝
+ ██║  ██║█████╗  ██████╔╝██║██║   ██║███████║   ██║   ██║██║   ██║█████╗  ███████╗
+ ██║  ██║██╔══╝  ██╔══██╗██║╚██╗ ██╔╝██╔══██║   ██║   ██║╚██╗ ██╔╝██╔══╝  ╚════██║
+ ██████╔╝███████╗██║  ██║██║ ╚████╔╝ ██║  ██║   ██║   ██║ ╚████╔╝ ███████╗███████║
+ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝  ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═══╝  ╚══════╝╚══════╝
+
+                       P R I C I N G   E N G I N E
+
+========================================================================
+
+                 BLACK-SCHOLES  |  MERTON JUMP DIFFUSION
+                  MONTE CARLO   |  NEURAL NETWORK PRICING
+
+------------------------------------------------------------------------
+                        MATURA THESIS PROJECT
+                               2026
+                          Nicolas Pasche
+------------------------------------------------------------------------
+
+ I do not take any responsibility for you losing money with this software.
+
+========================================================================
+
+)" << std::flush;
 }
 
+int main(int argc, char* argv[]) {
 
-// Keeping the tests in one function makes failures easier to identify.
-bool check(
-    const std::string& name,
-    double actual,
-    double expected,
-    double tolerance = 1e-9
-) {
-    const bool passed =
-        approximately_equal(actual, expected, tolerance);
+    print_banner();
 
-    std::cout
-        << (passed ? "[PASS] " : "[FAIL] ")
-        << std::left << std::setw(30) << name
-        << "Actual: " << std::setw(15) << actual
-        << "Expected: " << expected
-        << '\n';
+    try {
 
-    return passed;
-}
+        // Option parameters
+        const double S0 = 100.0;
+        const double K = 100.0;
+        const double T = 1.0;
+        const double r = 0.05;
+        const double d = 0.02;
 
+        // Merton Jump Diffusion parameters
+        const double sigma = 0.20;
+        const double lambda = 0.50;
+        const double muJ = -0.10;
+        const double sigmaJ = 0.20;
 
-int main() {
+        constexpr int MC_PATHS = 5000;
 
-    const double S0 = 100.0;
-    const double K = 100.0;
-    const double r = 0.05;
-    const double d = 0.0;
-    const double sigma = 0.20;
-    const double T = 1.0;
+        // The TorchScript model can also be passed as an argument.
+        const std::string model_path = argc > 1
+            ? argv[1]
+            : "../models/best_model_analytical.pt";
 
-    BlackScholesModel model(S0, r, d, sigma);
+        if (!std::filesystem::exists(model_path)) {
+            std::cerr
+                << "ANN model not found: "
+                << model_path << '\n';
 
-    CallOption call(K);
-    PutOption put(K);
-
-    DigitalCallOption digital_call(K);
-    DigitalPutOption digital_put(K);
-
-    ForwardContract forward(K);
-    ZeroCouponBond bond;
-
-    AnalyticalPricer pricer;
-
-    int passed = 0;
-    int total = 0;
-
-    std::cout << std::fixed << std::setprecision(10);
-
-    std::cout << "Black-Scholes Analytical Pricer Tests\n\n";
+            return 1;
+        }
 
 
-    // These reference prices are known for the standard Black-Scholes example.
-    const double call_price = pricer.price(model, call, T);
-    const double put_price = pricer.price(model, put, T);
+        // Models
+        BlackScholesModel bs_model(
+            S0, r, d, sigma
+        );
 
-    total++;
-    passed += check(
-        "European Call",
-        call_price,
-        10.4505835722
-    );
-
-    total++;
-    passed += check(
-        "European Put",
-        put_price,
-        5.5735260223
-    );
+        MertonJumpDiffusionModel mjd_model(
+            S0, r, d, sigma,
+            lambda, muJ, sigmaJ
+        );
 
 
-    // Put-call parity provides an independent consistency check.
-    const double parity_left = call_price - put_price;
-
-    const double parity_right =
-        S0 * std::exp(-d * T)
-        - K * std::exp(-r * T);
-
-    total++;
-    passed += check(
-        "Put-Call Parity",
-        parity_left,
-        parity_right
-    );
+        // Derivative
+        CallOption call(K);
 
 
-    // A digital call and put must together pay one unit at maturity,
-    // except at the strike if their payoff definitions overlap or leave a gap.
-    // With positive volatility, the probability of ending exactly at K is zero.
-    const double digital_call_price =
-        pricer.price(model, digital_call, T);
+        // Pricers
+        AnalyticalPricer bs_pricer;
+        MertonAnalyticalPricer mjd_pricer;
+        MonteCarloPricer mc_pricer;
 
-    const double digital_put_price =
-        pricer.price(model, digital_put, T);
+        ANN_Pricer ann_pricer(
+            model_path,
+            22.223006564152026,
+            22.047419209093864
+        );
 
-    total++;
-    passed += check(
-        "Digital Call + Put",
-        digital_call_price + digital_put_price,
-        std::exp(-r * T)
-    );
+        RandomGenerator rng(1);
 
 
-    // The forward price should match the expression in put-call parity.
-    const double forward_price =
-        pricer.price(model, forward, T);
+        // Calculate option prices
+        const double bs_price = bs_pricer.price(
+            bs_model,
+            call,
+            T
+        );
 
-    total++;
-    passed += check(
-        "Forward Contract",
-        forward_price,
-        parity_right
-    );
+        const double mjd_price = mjd_pricer.price(
+            mjd_model,
+            call,
+            r,
+            T
+        );
 
+        const auto mc_result = mc_pricer.price(
+            mjd_model,
+            call,
+            rng,
+            r,
+            T,
+            MC_PATHS
+        );
 
-    // A zero-coupon bond paying one unit has a known discounted value.
-    const double bond_price =
-        pricer.price(model, bond, T);
-
-    total++;
-    passed += check(
-        "Zero-Coupon Bond",
-        bond_price,
-        std::exp(-r * T)
-    );
-
-
-    // At maturity, an option is worth its immediate payoff.
-    total++;
-    passed += check(
-        "Call at Maturity",
-        pricer.price(model, call, 0.0),
-        call.payoff(S0)
-    );
-
-    total++;
-    passed += check(
-        "Put at Maturity",
-        pricer.price(model, put, 0.0),
-        put.payoff(S0)
-    );
+        const auto ann_result = ann_pricer.price(
+            mjd_model,
+            call,
+            rng,
+            r,
+            T,
+            0
+        );
 
 
-    // Zero volatility removes randomness from the stock price.
-    // This also tests the special case that would otherwise divide by zero.
-    const double zero_sigma = 0.0;
+        // Display results
+        std::cout << std::fixed << std::setprecision(6);
 
-    BlackScholesModel deterministic_model(
-        S0, r, d, zero_sigma
-    );
+        std::cout
+            << "\n============================================\n"
+            << "         DERIVATIVES PRICING ENGINE\n"
+            << "============================================\n\n";
 
-    const double deterministic_ST =
-        S0 * std::exp((r - d) * T);
+        std::cout << "European Call Option\n\n";
 
-    const double expected_call =
-        std::exp(-r * T) * call.payoff(deterministic_ST);
+        std::cout
+            << "S0       = " << S0 << '\n'
+            << "K        = " << K << '\n'
+            << "T        = " << T << '\n'
+            << "r        = " << r << '\n'
+            << "d        = " << d << '\n'
+            << "sigma    = " << sigma << '\n'
+            << "lambda   = " << lambda << '\n'
+            << "muJ      = " << muJ << '\n'
+            << "sigmaJ   = " << sigmaJ << '\n';
 
-    const double expected_put =
-        std::exp(-r * T) * put.payoff(deterministic_ST);
+        std::cout
+            << "\n--------------------------------------------\n"
+            << std::left << std::setw(26) << "Method"
+            << std::right << std::setw(16) << "Price"
+            << "\n--------------------------------------------\n";
 
-    total++;
-    passed += check(
-        "Call with Zero Volatility",
-        pricer.price(deterministic_model, call, T),
-        expected_call
-    );
+        std::cout
+            << std::left << std::setw(26) << "Black-Scholes"
+            << std::right << std::setw(16) << bs_price << '\n'
 
-    total++;
-    passed += check(
-        "Put with Zero Volatility",
-        pricer.price(deterministic_model, put, T),
-        expected_put
-    );
+            << std::left << std::setw(26) << "Merton Analytical"
+            << std::right << std::setw(16) << mjd_price << '\n'
 
+            << std::left << std::setw(26) << "Monte Carlo"
+            << std::right << std::setw(16) << mc_result.price << '\n'
 
-    // The same parity relation must also hold when dividends are included.
-    const double dividend_yield = 0.03;
+            << std::left << std::setw(26) << "ANN Analytical"
+            << std::right << std::setw(16) << ann_result.price << '\n';
 
-    BlackScholesModel dividend_model(
-        S0, r, dividend_yield, sigma
-    );
-
-    const double dividend_call =
-        pricer.price(dividend_model, call, T);
-
-    const double dividend_put =
-        pricer.price(dividend_model, put, T);
-
-    const double dividend_parity =
-        S0 * std::exp(-dividend_yield * T)
-        - K * std::exp(-r * T);
-
-    total++;
-    passed += check(
-        "Parity with Dividends",
-        dividend_call - dividend_put,
-        dividend_parity
-    );
+        std::cout
+            << "--------------------------------------------\n\n";
 
 
-    // Report the overall result so a failed test cannot go unnoticed.
-    std::cout << "\n----------------------------------------\n";
+        // Compare the approximations against the Merton reference.
+        std::cout << "Errors relative to analytical Merton:\n\n";
 
-    std::cout
-        << "Passed: " << passed
-        << " / " << total << '\n';
+        std::cout
+            << "Monte Carlo error: "
+            << mc_result.price - mjd_price << '\n'
 
-    if (passed == total) {
-        std::cout << "All tests passed.\n";
+            << "ANN error:         "
+            << ann_result.price - mjd_price << '\n'
+
+            << "MC standard error: "
+            << mc_result.standard_error << '\n';
+
+
+        std::cout << "\nPricing completed successfully.\n\n";
+
         return 0;
-    }
 
-    std::cout << "Some tests failed.\n";
-    return 1;
+    } catch (const std::exception& e) {
+
+        std::cerr << "Error: " << e.what() << '\n';
+
+        return 1;
+    }
 }

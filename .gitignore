@@ -1,5 +1,7 @@
-# C++ build files
-code/build/
+# C++ build directories
+/code/build/
+/code/build-release/
+/code/build-*/
 
 *.o
 *.exe
@@ -9,14 +11,23 @@ code/build/
 __pycache__/
 *.py[cod]
 
-# PyTorch generated files
-torch
+# Python environments
+.venv/
+venv/
 
-# Trained models (only root models folder)
- /models/*.pth
+# Large training datasets
+/data/*.csv
+/data/processed/
 
-# Processed ML data
-data/processed/
+# Temporary files
+*.tmp
+*.swp
 
-# Dataset
-data/*.csvcode/build/
+# LaTeX build files
+*.aux
+*.log
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.toc
+*.out
